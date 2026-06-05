@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jorge Montoto — Ciberseguridad</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;image-rendering:pixelated;}
+:root{
+  --gbg:#9BBC0F;
+  --gbg-dark:#8BAC0F;
+  --gb-text:#1a3300;
+  --gb-text2:#2d5500;
+  --gb-border:#556B2F;
+  --gb-body:#C8C8BE;
+  --gb-body-dark:#AEAEA0;
+  --gb-body-light:#DEDED6;
+  --gb-body-shadow:#909088;
+  --gb-purple:#6A5ACD;
+  --gb-blue:#3355AA;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #111;
+  font-family: 'Press Start 2P', monospace;
+}
+
+/* =====================================================================
+   LAYOUT: the gameboy is scaled to fit the viewport.
+   We only show: top stripe + label + battery + screen housing + brand.
+   The bottom half (buttons, speaker) is hidden below the viewport.
+   Total "visible" portion of the 760px shell ≈ top 390px.
+   We scale to fill the viewport both horizontally and vertically,
+   anchored at the top-center so the bottom clips naturally.
+===================================================================== */
+body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.gameboy-outer {
+  /* This wrapper is exactly viewport-sized */
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.gameboy {
+  position: relative;
+  /* Natural size: 520px wide, 940px tall.
+     The portion we show is ~480px (top part including brand).
+     JS will scale this so that 480px maps to 100vh. */
+  width: 520px;
+  height: 940px;
+  flex-shrink: 0;
+  transform-origin: top center;
+  background: linear-gradient(155deg, var(--gb-body-light) 0%, var(--gb-body) 45%, var(--gb-body-dark) 100%);
+  border-radius: 18px 18px 80px 18px;
+  box-shadow:
+    inset 3px 4px 8px rgba(255,255,255,0.7),
+    inset -3px -3px 6px rgba(0,0,0,0.2),
+    6px 6px 0px var(--gb-body-shadow),
+    12px 12px 0px rgba(0,0,0,0.15),
+    0 40px 100px rgba(0,0,0,0.98);
+}
+
+/* Purple stripe */
+.gb-top-stripe {
+  position: absolute;
+  top: 20px; left: 0; right: 0; height: 8px;
+  background: linear-gradient(90deg, var(--gb-purple) 0%, #9090CC 35%, #7088BB 65%, var(--gb-purple) 100%);
+  border-top: 1px solid rgba(255,255,255,0.3);
+  border-bottom: 1px solid rgba(0,0,0,0.2);
+}
+
+/* DOT MATRIX label */
+.gb-label {
+  position: absolute;
+  top: 32px; left: 50%; transform: translateX(-50%);
+  font-size: 7px; color: #7070A0; letter-spacing: 3px;
+  white-space: nowrap; font-family: Arial, sans-serif; font-weight: bold;
+}
+
+/* Battery */
+.gb-battery-led {
+  position: absolute; top: 46px; left: 38px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff6666, #cc0000);
+  box-shadow: 0 0 6px #ff0000, 0 0 12px rgba(255,0,0,0.3);
+  animation: led-blink 3s ease-in-out infinite;
+}
+.gb-battery-label {
+  position: absolute; top: 59px; left: 26px;
+  font-size: 5px; color: #888; letter-spacing: 0.5px; font-family: Arial, sans-serif;
+}
+@keyframes led-blink{0%,90%,100%{opacity:1}95%{opacity:0.15}}
+
+/* Nintendo GAME BOY brand — visible at bottom of clipped area */
+.gb-brand {
+  position: absolute;
+  top: 428px; left: 50%; transform: translateX(-50%);
+  text-align: center; white-space: nowrap; line-height: 1.5;
+}
+.gb-nintendo {
+  font-family: Arial, sans-serif; font-size: 11px;
+  font-style: italic; font-weight: bold;
+  color: var(--gb-blue); letter-spacing: 1px; display: block;
+}
+.gb-gameboy-text {
+  font-family: Arial, sans-serif; font-size: 20px;
+  font-weight: 900; color: var(--gb-blue); letter-spacing: 1px; display: block;
+}
+.gb-gameboy-text sup { font-size: 10px; font-weight: normal; vertical-align: super; }
+
+/* =====================================================================
+   SCREEN HOUSING
+===================================================================== */
+.gb-screen-housing {
+  position: absolute;
+  top: 64px; left: 38px; right: 38px; height: 352px;
+  background: linear-gradient(145deg, #8A8A82, #777770, #888882);
+  border-radius: 12px 12px 4px 4px;
+  box-shadow: inset 4px 4px 10px rgba(0,0,0,0.55), inset -1px -1px 4px rgba(255,255,255,0.1);
+  padding: 26px 26px 20px;
+}
+.gb-screen-frame {
+  width: 100%; height: 100%;
+  background: #1a1a18; border-radius: 5px;
+  padding: 6px; box-shadow: inset 0 0 0 3px #0a0a08;
+}
+.gb-screen {
+  width: 100%; height: 100%;
+  background: var(--gbg); border-radius: 3px;
+  overflow: hidden; position: relative;
+}
+/* Scanlines */
+.gb-screen::after {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:100;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px);
+}
+
+/* =====================================================================
+   PORTFOLIO SCREEN CONTENT
+===================================================================== */
+#portfolio-screen {
+  width:100%; height:100%;
+  display:flex; flex-direction:column; overflow:hidden; position:relative; z-index:1;
+}
+
+/* Top bar */
+.screen-header {
+  background:var(--gb-text); padding:6px 10px;
+  display:flex; align-items:center; justify-content:space-between;
+  flex-shrink:0; border-bottom:2px solid var(--gb-border);
+}
+.screen-header-left { display:flex; align-items:center; gap:6px; }
+.screen-header-title{font-size:6px;color:var(--gbg);}
+.screen-header-lights{display:flex;gap:5px;}
+.sh-light{width:6px;height:6px;border-radius:50%;border:1px solid rgba(0,0,0,0.4);animation:blink 2.5s infinite;}
+.sh-light.r{background:#FF5555;animation-delay:0s;}
+.sh-light.y{background:#FFD700;animation-delay:0.9s;}
+.sh-light.g{background:#55FF88;animation-delay:1.8s;}
+@keyframes blink{0%,88%,100%{opacity:1}94%{opacity:.2}}
+
+/* CV download button — top-right corner of header */
+.cv-btn {
+  background: var(--gbg-dark);
+  border: 2px solid var(--gb-border);
+  color: var(--gb-text);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 5px;
+  padding: 3px 6px;
+  cursor: pointer;
+  text-decoration: none;
+  display: flex; align-items: center; gap: 3px;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.cv-btn:hover { background: var(--gbg); }
+.cv-btn-icon { font-size: 7px; }
+
+/* Hero */
+.screen-hero{background:var(--gbg);padding:10px 10px 8px;border-bottom:2px solid var(--gbg-dark);flex-shrink:0;}
+.hero-top { display:flex; align-items:flex-start; justify-content:space-between; }
+.hero-name{font-size:9px;color:var(--gb-text);line-height:1.8;margin-bottom:3px;text-shadow:1px 1px 0 var(--gbg-dark);}
+.hero-role{font-size:5px;color:var(--gb-text2);line-height:2.2;margin-bottom:6px;}
+.hero-badges{display:flex;gap:5px;flex-wrap:wrap;}
+.hero-badge{font-size:5px;background:var(--gb-text);color:var(--gbg);padding:3px 6px;border:1px solid var(--gb-border);}
+.type-cursor{display:inline-block;background:var(--gb-text);width:6px;height:10px;vertical-align:middle;animation:bc 1s step-end infinite;}
+@keyframes bc{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Battle invite — green */
+.screen-dialog{background:var(--gbg-dark);border-bottom:2px solid var(--gb-text);padding:6px 10px;flex-shrink:0;}
+.screen-dialog-txt{font-size:5px;color:var(--gb-text);line-height:2.2;}
+.screen-dialog-opts{display:flex;gap:8px;margin-top:5px;}
+.screen-dialog-btn{background:var(--gb-text);border:2px solid var(--gb-border);color:var(--gbg);font-family:'Press Start 2P',monospace;font-size:5px;padding:4px 9px;cursor:pointer;}
+.screen-dialog-btn.sec{background:var(--gb-text2);}
+.screen-dialog-btn:hover{filter:brightness(1.3);}
+.cursor-arr{display:inline-block;color:var(--gb-text);animation:arr .9s step-end infinite;}
+@keyframes arr{0%,100%{transform:translateX(0)}50%{transform:translateX(2px)}}
+
+/* Nav */
+.screen-nav{display:flex;background:var(--gb-text);border-bottom:2px solid var(--gb-border);flex-shrink:0;}
+.screen-nav-btn{flex:1;background:none;border:none;border-right:1px solid var(--gb-text2);color:var(--gbg);font-family:'Press Start 2P',monospace;font-size:5px;padding:6px 2px;cursor:pointer;text-align:center;line-height:1.8;transition:background .1s;}
+.screen-nav-btn:last-child{border-right:none;}
+.screen-nav-btn:hover,.screen-nav-btn.active{background:var(--gb-text2);color:#FFD700;}
+.nav-ico{font-size:6px;display:block;margin-bottom:2px;}
+
+/* Scrollable content */
+.screen-content{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--gbg);scrollbar-width:none;}
+.screen-content::-webkit-scrollbar{display:none;}
+.pk-section{display:none;}
+.pk-section.visible{display:block;}
+.sec-header{background:var(--gb-text);padding:5px 10px;border-bottom:1px solid var(--gb-border);position:sticky;top:0;z-index:5;}
+.sec-header-txt{font-size:6px;color:#FFD700;}
+
+/* About */
+.about-bio{font-size:5px;color:var(--gb-text);line-height:2.3;margin:8px 8px 5px;padding:8px;background:rgba(0,0,0,0.08);border:1px solid var(--gbg-dark);}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:0 8px 5px;}
+.stat-card{border:1px solid var(--gb-border);padding:6px;background:rgba(0,0,0,0.06);}
+.stat-label{font-size:4px;color:var(--gb-text2);margin-bottom:3px;}
+.stat-value{font-size:5px;color:var(--gb-text);line-height:1.8;}
+.lang-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px;}
+.lang-badge{font-size:4px;border:1px solid var(--gb-border);padding:2px 5px;color:var(--gb-text);}
+.lang-native{border-color:var(--gb-text);font-weight:bold;}
+
+/* Skills */
+.skills-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px;}
+.skill-item{border:1px solid var(--gb-border);padding:6px;background:rgba(0,0,0,0.06);}
+.skill-name{font-size:4px;color:var(--gb-text);margin-bottom:3px;}
+.skill-type{display:inline-block;font-size:4px;padding:1px 4px;border:1px solid var(--gbg-dark);color:var(--gb-text2);margin-bottom:3px;}
+.skill-bar-bg{background:var(--gb-text2);height:6px;border:1px solid var(--gb-border);}
+.skill-bar{height:100%;background:var(--gb-text);animation:grow 1.2s ease-out;}
+@keyframes grow{from{width:0!important}}
+.skill-pct{font-size:4px;color:var(--gb-text2);margin-top:2px;text-align:right;}
+
+/* Projects */
+.proj-card{border:1px solid var(--gb-border);margin:8px;position:relative;}
+.proj-header{background:var(--gb-text);padding:5px 8px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.proj-num{font-size:5px;color:#FFD700;}
+.proj-title{font-size:5px;color:var(--gbg);}
+.proj-tag{margin-left:auto;font-size:4px;background:#FFD700;color:var(--gb-text);padding:2px 5px;}
+.proj-body{padding:8px;}
+.proj-desc{font-size:4px;color:var(--gb-text);line-height:2.2;margin-bottom:5px;}
+.proj-techs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;}
+.tech-badge{font-size:4px;border:1px solid var(--gb-border);color:var(--gb-text);padding:2px 4px;}
+.proj-link{font-size:4px;color:var(--gb-text2);text-decoration:none;border-bottom:1px solid var(--gb-text2);}
+
+/* Contact */
+.contact-list{display:flex;flex-direction:column;gap:5px;margin:8px;}
+.contact-item{border:1px solid var(--gb-border);background:rgba(0,0,0,0.05);display:flex;align-items:center;gap:8px;padding:6px 8px;text-decoration:none;transition:background .1s;}
+.contact-item:hover{background:rgba(0,0,0,0.12);}
+.contact-icon-wrap{font-size:7px;min-width:24px;text-align:center;color:var(--gb-text);}
+.contact-label{font-size:4px;color:var(--gb-text2);margin-bottom:2px;}
+.contact-val{font-size:4px;color:var(--gb-text);line-height:1.8;}
+.contact-arr{margin-left:auto;font-size:9px;color:var(--gb-text);}
+
+.new-badge{display:inline-block;background:var(--gb-text);color:var(--gbg);font-size:4px;padding:1px 4px;border:1px solid var(--gb-border);animation:nblink 1s infinite;margin-left:4px;}
+@keyframes nblink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* =====================================================================
+   BATTLE OVERLAY — FireRed/LeafGreen layout
+   ┌──────────────────────────────────────────────┐
+   │ [enemy-hud top-left]   [pikachu top-right]   │
+   │                                              │
+   │ [oshawott bot-left]    [player-hud top-right]│  ← HUD floats over arena
+   ├──────────────────────────────────────────────┤
+   │  dialog text (left)  │  4-btn menu (right)   │
+   └──────────────────────────────────────────────┘
+===================================================================== */
+#battle-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  /* scanlines on green LCD bg */
+  background-color: var(--gbg);
+  background-image: repeating-linear-gradient(
+    0deg, transparent, transparent 3px,
+    rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px
+  );
+  flex-direction: column;
+  overflow: hidden;
+}
+#battle-overlay.active { display: flex; }
+
+/* ── ARENA (top ~65% of screen) ── */
+.b-arena {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Ground ovals — aligned under each sprite */
+.b-ground-enemy {
+  position: absolute;
+  /* Pikachu is top:6% right:8%, sprite ~22vh tall. Shadow goes below it */
+  top: calc(6% + clamp(100px, 22vh, 200px) - 6px);
+  right: 4%;
+  width: clamp(80px, 16%, 160px);
+  height: 14px;
+  background: var(--gb-text2);
+  border-radius: 50%;
+  opacity: 0.4;
+}
+.b-ground-player {
+  position: absolute;
+  /* Oshawott is bottom:20% left:8% */
+  bottom: calc(20% - 8px);
+  left: 4%;
+  width: clamp(100px, 18%, 180px);
+  height: 18px;
+  background: var(--gb-text2);
+  border-radius: 50%;
+  opacity: 0.4;
+}
+
+/* HUD cards — positioned like FireRed (enemy top-left, player bottom-right) */
+.b-hud-enemy {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: clamp(200px, 35%, 340px);
+  background: var(--gbg-dark);
+  border: 2px solid var(--gb-text);
+  padding: 10px 14px 10px;
+  box-shadow: 3px 3px 0 var(--gb-text);
+}
+.b-hud-player {
+  position: absolute;
+  bottom: 18%; right: 12px;
+  width: clamp(200px, 35%, 340px);
+  background: var(--gbg-dark);
+  border: 2px solid var(--gb-text);
+  padding: 10px 14px 10px;
+  box-shadow: 3px 3px 0 var(--gb-text);
+  text-align: right;
+}
+.b-hud-name { font-size: clamp(7px,1.4vw,13px); color:var(--gb-text); margin-bottom:4px; }
+.b-hud-lv   { font-size: clamp(5px,1vw,10px);   color:var(--gb-text2); margin-bottom:6px; display:inline-block; }
+.b-hud-lv-right { float:right; }
+.b-hp-row   { display:flex; align-items:center; gap:6px; }
+.b-hp-label { font-size: clamp(5px,1vw,10px); color:var(--gb-text); white-space:nowrap; }
+.b-hp-bg    { flex:1; background:var(--gb-text2); height:9px; border:2px solid var(--gb-text); }
+.b-hp-bar   { height:100%; background:var(--gb-text); transition:width 0.5s; }
+
+/* Sprites — pixel art, LCD-tinted */
+.b-sprite-img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: sepia(1) saturate(4) hue-rotate(40deg) brightness(0.55);
+  display: block;
+}
+
+/* Enemy (Pikachu): top-right — GIF already faces left, no flip needed */
+.b-sprite-wrap-enemy {
+  position: absolute;
+  top: 6%; right: 8%;
+}
+.b-sprite-enemy-img {
+  height: clamp(100px, 22vh, 200px);
+  animation: b-enter-enemy 0.6s ease-out forwards;
+}
+@keyframes b-enter-enemy {
+  from { opacity:0; transform:translateX(40px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+
+/* Player (Oshawott): bottom-left — flip so it faces right toward Pikachu */
+.b-sprite-wrap-player {
+  position: absolute;
+  bottom: 20%; left: 8%;
+}
+.b-sprite-player-img {
+  height: clamp(120px, 28vh, 240px);
+  transform: scaleX(-1);
+  animation: b-enter-player 0.6s ease-out 0.2s both;
+}
+@keyframes b-enter-player {
+  from { opacity:0; transform:scaleX(-1) translateX(-40px); }
+  to   { opacity:1; transform:scaleX(-1) translateX(0); }
+}
+
+/* Sprite state effects */
+/* Enemy shake (no flip needed) */
+.b-sprite-wrap-enemy.shake .b-sprite-enemy-img {
+  animation: bshake 0.35s steps(2) !important;
+}
+@keyframes bshake { 0%,100%{transform:translateX(0)} 33%{transform:translateX(-12px)} 66%{transform:translateX(12px)} }
+
+/* Player shake (keep flip) */
+.b-sprite-wrap-player.shake .b-sprite-player-img {
+  animation: bshake-flip 0.35s steps(2) !important;
+}
+@keyframes bshake-flip { 0%,100%{transform:scaleX(-1) translateX(0)} 33%{transform:scaleX(-1) translateX(-12px)} 66%{transform:scaleX(-1) translateX(12px)} }
+
+.b-sprite-wrap-enemy.faint .b-sprite-enemy-img {
+  animation: bfaint 0.6s steps(3) forwards !important;
+}
+.b-sprite-wrap-player.faint .b-sprite-player-img {
+  animation: bfaint-flip 0.6s steps(3) forwards !important;
+}
+@keyframes bfaint      { to { opacity:0; transform:translateY(50px); } }
+@keyframes bfaint-flip { to { opacity:0; transform:scaleX(-1) translateY(50px); } }
+
+.b-sprite-wrap-player.win .b-sprite-player-img {
+  animation: bwin-flip 0.45s steps(2) infinite alternate !important;
+}
+@keyframes bwin-flip { to { transform:scaleX(-1) translateY(-12px); } }
+
+.b-sprite-wrap-enemy.flash .b-sprite-enemy-img,
+.b-sprite-wrap-player.flash .b-sprite-player-img {
+  animation: bflash 0.25s steps(2) !important;
+}
+@keyframes bflash { 0%,100%{opacity:1} 50%{opacity:0.08} }
+
+/* ── BOTTOM BAR (dialog + menu) — fixed height ── */
+.b-bottom {
+  display: flex;
+  flex-shrink: 0;
+  height: clamp(110px, 22vh, 200px);
+  border-top: 3px solid var(--gb-text);
+}
+
+/* Left: dialog text */
+.b-dialog {
+  flex: 1;
+  background: var(--gbg-dark);
+  border-right: 3px solid var(--gb-text);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.b-text {
+  font-size: clamp(7px,1.3vw,14px);
+  color: var(--gb-text);
+  line-height: 2.3;
+}
+.b-cursor {
+  display:inline-block; background:var(--gb-text);
+  width:clamp(6px,1vw,10px); height:clamp(10px,1.6vw,16px);
+  vertical-align:middle; animation:bc 0.7s step-end infinite;
+}
+
+/* Right: action buttons (2×2 grid like FireRed) */
+.b-menu-panel {
+  width: clamp(180px, 32%, 320px);
+  background: var(--gbg-dark);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px;
+  gap: 8px;
+}
+
+/* Fight/Flee row (shown first) */
+.b-fight-row { display:none; flex-direction:column; gap:8px; height:100%; justify-content:center; }
+.b-fight-row.visible { display:flex; }
+.b-fight-btn {
+  flex:1;
+  background: var(--gb-text); border: 2px solid var(--gb-border);
+  color: var(--gbg); font-family:'Press Start 2P',monospace;
+  font-size: clamp(6px,1.1vw,11px);
+  cursor:pointer; transition:filter .1s;
+}
+.b-fight-btn:hover { filter:brightness(1.35); }
+.b-flee-btn { background:var(--gb-text2); }
+
+/* Move menu (2×2 grid) */
+.b-move-menu { display:none; grid-template-columns:1fr 1fr; gap:6px; height:100%; }
+.b-move-menu.visible { display:grid; }
+.b-move-btn {
+  background: var(--gb-text); border: 2px solid var(--gb-border);
+  color: var(--gbg); font-family:'Press Start 2P',monospace;
+  font-size: clamp(5px,0.9vw,9px);
+  cursor:pointer; text-align:center; line-height:1.8;
+  padding: 4px 6px;
+  transition: filter .1s;
+}
+.b-move-btn:hover { filter:brightness(1.35); }
+.b-move-sub { font-size:clamp(4px,0.7vw,7px); color:var(--gbg-dark); display:block; margin-top:2px; }
+
+/* Music button — inside dialog bar, bottom-left corner, unobtrusive */
+#music-btn {
+  position: absolute;
+  bottom: 8px; left: 8px;
+  z-index: 10;
+  background: var(--gb-text2);
+  border: 1px solid var(--gb-border);
+  color: var(--gbg);
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(4px, 0.7vw, 7px);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: filter 0.1s;
+  opacity: 0.75;
+}
+#music-btn:hover { filter: brightness(1.4); opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Background music — autoplay with loop -->
+<audio id="bg-music" loop preload="auto">
+  <source src="audio/background.mp3" type="audio/mpeg">
+  <source src="audio/background.ogg" type="audio/ogg">
+  <source src="audio/background.wav" type="audio/wav">
+</audio>
+
+<!-- ===== BATTLE OVERLAY ===== -->
+<div id="battle-overlay">
+  <div class="b-arena">
+    <!-- Ground ovals -->
+    <div class="b-ground-enemy"></div>
+    <div class="b-ground-player"></div>
+
+    <!-- Enemy HUD — top left -->
+    <div class="b-hud-enemy">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="b-hud-name">PIKACHU</div>
+        <div class="b-hud-lv">Lv.45</div>
+      </div>
+      <div class="b-hp-row">
+        <div class="b-hp-label">HP</div>
+        <div class="b-hp-bg"><div class="b-hp-bar" id="enemy-hp" style="width:100%"></div></div>
+      </div>
+    </div>
+
+    <!-- Player HUD — bottom right -->
+    <div class="b-hud-player">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <div class="b-hud-name">OSHAWOTT</div>
+        <div class="b-hud-lv">Lv.21</div>
+      </div>
+      <div class="b-hp-row">
+        <div class="b-hp-label">HP</div>
+        <div class="b-hp-bg"><div class="b-hp-bar" id="player-hp" style="width:100%"></div></div>
+      </div>
+    </div>
+
+    <!-- Enemy sprite (Pikachu) — top right, large, facing left -->
+    <div class="b-sprite-wrap-enemy" id="sprite-enemy">
+      <img class="b-sprite-img b-sprite-enemy-img"
+           src="https://img.pokemondb.net/sprites/black-white/anim/normal/pikachu.gif"
+           alt="Pikachu">
+    </div>
+
+    <!-- Player sprite (Oshawott) — bottom left, larger -->
+    <div class="b-sprite-wrap-player" id="sprite-player">
+      <img class="b-sprite-img b-sprite-player-img"
+           src="https://img.pokemondb.net/sprites/black-white-2/anim/normal/oshawott.gif"
+           alt="Oshawott">
+    </div>
+  </div>
+
+  <!-- Bottom bar: dialog left + menu right -->
+  <div class="b-bottom">
+    <!-- Dialog text -->
+    <div class="b-dialog" style="position:relative;">
+      <div class="b-text" id="btxt">Cargando...<span class="b-cursor"></span></div>
+      <button id="music-btn" onclick="toggleMusic()" title="Toggle music">♪ ON</button>
+    </div>
+
+    <!-- Action panel -->
+    <div class="b-menu-panel">
+      <!-- Fight/Flee -->
+      <div class="b-fight-row" id="fight-row">
+        <button class="b-fight-btn" onclick="showMoveMenu()">⚔ LUCHAR</button>
+        <button class="b-fight-btn b-flee-btn" onclick="skipBattle()">↩ HUIR</button>
+      </div>
+      <!-- Move grid (2×2) -->
+      <div class="b-move-menu" id="move-menu">
+        <button class="b-move-btn" onclick="useMove(0)">PENTESTING<span class="b-move-sub">SEGURIDAD PP15</span></button>
+        <button class="b-move-btn" onclick="useMove(1)">SPRING BOOT<span class="b-move-sub">ESPECIAL PP10</span></button>
+        <button class="b-move-btn" onclick="useMove(2)">PYTHON HACK<span class="b-move-sub">ATAQUE PP20</span></button>
+        <button class="b-move-btn" onclick="useMove(3)">ANALISIS VULN<span class="b-move-sub">DEFENSA PP5</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== GAME BOY ===== -->
+<div class="gameboy-outer">
+  <div class="gameboy" id="gameboy">
+
+    <div class="gb-top-stripe"></div>
+    <div class="gb-label">DOT MATRIX WITH STEREO SOUND</div>
+    <div class="gb-battery-led"></div>
+    <div class="gb-battery-label">BATTERY</div>
+
+    <!-- Screen housing -->
+    <div class="gb-screen-housing">
+      <div class="gb-screen-frame">
+        <div class="gb-screen">
+          <div id="portfolio-screen">
+
+            <!-- Header with CV button -->
+            <div class="screen-header">
+              <div class="screen-header-left">
+                <div class="screen-header-title">TRAINER CARD <span class="new-badge">NEW</span></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <a class="cv-btn" href="assets/cv.pdf" download="Jorge_Montoto_CV.pdf">
+                  <span class="cv-btn-icon">↓</span>CV
+                </a>
+                <div class="screen-header-lights">
+                  <div class="sh-light r"></div>
+                  <div class="sh-light y"></div>
+                  <div class="sh-light g"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hero -->
+            <div class="screen-hero">
+              <div class="hero-name">JORGE MONTOTO L.</div>
+              <div class="hero-role">
+                &gt; CIBERSEG. URJC<br>
+                &gt; SEG. REDES &amp; WEB<br>
+                &gt; ALCORCON, MADRID<span class="type-cursor"></span>
+              </div>
+              <div class="hero-badges">
+                <div class="hero-badge">Lv.21 SEC</div>
+                <div class="hero-badge">HP ||||o</div>
+                <div class="hero-badge">B2 ENG</div>
+              </div>
+            </div>
+
+            <!-- Battle invite -->
+            <div class="screen-dialog" id="intro-dialog">
+              <div class="screen-dialog-txt">
+                <span class="cursor-arr">&gt;</span> RECLUTADOR bloquea el camino.<br>
+                ¿Iniciar combate tecnico?
+              </div>
+              <div class="screen-dialog-opts">
+                <button class="screen-dialog-btn" onclick="startBattle()">LUCHAR</button>
+                <button class="screen-dialog-btn sec" onclick="dismissDialog()">HUIR</button>
+              </div>
+            </div>
+
+            <!-- Nav -->
+            <nav class="screen-nav">
+              <button class="screen-nav-btn active" onclick="showSec('about',this)"><span class="nav-ico">[i]</span>INFO</button>
+              <button class="screen-nav-btn" onclick="showSec('skills',this)"><span class="nav-ico">[*]</span>SKILL</button>
+              <button class="screen-nav-btn" onclick="showSec('projects',this)"><span class="nav-ico">[#]</span>PROJ</button>
+              <button class="screen-nav-btn" onclick="showSec('contact',this)"><span class="nav-ico">[@]</span>LINK</button>
+            </nav>
+
+            <!-- Scrollable content -->
+            <div class="screen-content" id="screen-content">
+
+              <!-- ABOUT -->
+              <section class="pk-section visible" id="sec-about">
+                <div class="sec-header"><span class="sec-header-txt">■ TRAINER INFO</span></div>
+                <div class="about-bio">Estudiante de Ing. de la Ciberseguridad en la URJC con interes en seguridad de redes, analisis de vulnerabilidades y sistemas Linux. Me apasiona la seguridad web y el desarrollo de apps seguras.</div>
+                <div class="about-grid">
+                  <div class="stat-card"><div class="stat-label">UNIVERSIDAD</div><div class="stat-value">URJC<br>MOSTOLES</div></div>
+                  <div class="stat-card"><div class="stat-label">GRADO</div><div class="stat-value">ING.<br>CIBERSEG.</div></div>
+                  <div class="stat-card"><div class="stat-label">AÑO INICIO</div><div class="stat-value">2023</div></div>
+                  <div class="stat-card"><div class="stat-label">UBICACION</div><div class="stat-value">ALCORCON<br>MADRID</div></div>
+                </div>
+                <div class="stat-card" style="margin:5px 8px 10px;">
+                  <div class="stat-label">IDIOMAS</div>
+                  <div class="lang-row">
+                    <div class="lang-badge lang-native">ESP NATIVO</div>
+                    <div class="lang-badge">ENG B2 LanguageCert</div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- SKILLS -->
+              <section class="pk-section" id="sec-skills">
+                <div class="sec-header"><span class="sec-header-txt">■ MOVIMIENTOS APRENDIDOS</span></div>
+                <div class="skills-grid">
+                  <div class="skill-item"><div class="skill-name">JAVA / SPRING</div><div class="skill-type">BACKEND</div><div class="skill-bar-bg"><div class="skill-bar" style="width:80%"></div></div><div class="skill-pct">80 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">PYTHON</div><div class="skill-type">ATAQUE</div><div class="skill-bar-bg"><div class="skill-bar" style="width:72%"></div></div><div class="skill-pct">72 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">HTML/CSS/JS</div><div class="skill-type">FRONTEND</div><div class="skill-bar-bg"><div class="skill-bar" style="width:75%"></div></div><div class="skill-pct">75 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">LINUX / KALI</div><div class="skill-type">SISTEMA</div><div class="skill-bar-bg"><div class="skill-bar" style="width:70%"></div></div><div class="skill-pct">70 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">C / ENSAMBLADOR</div><div class="skill-type">BAJO NIVEL</div><div class="skill-bar-bg"><div class="skill-bar" style="width:60%"></div></div><div class="skill-pct">60 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">SEG. WEB OWASP</div><div class="skill-type">ESPECIAL</div><div class="skill-bar-bg"><div class="skill-bar" style="width:78%"></div></div><div class="skill-pct">78 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">WIRESHARK/NMAP</div><div class="skill-type">ANALISIS</div><div class="skill-bar-bg"><div class="skill-bar" style="width:65%"></div></div><div class="skill-pct">65 PP</div></div>
+                  <div class="skill-item"><div class="skill-name">GIT / JIRA / MIRO</div><div class="skill-type">GESTION</div><div class="skill-bar-bg"><div class="skill-bar" style="width:82%"></div></div><div class="skill-pct">82 PP</div></div>
+                </div>
+              </section>
+
+              <!-- PROJECTS -->
+              <section class="pk-section" id="sec-projects">
+                <div class="sec-header"><span class="sec-header-txt">■ POKEDEX DE PROYECTOS</span></div>
+                <div class="proj-card">
+                  <div class="proj-header"><div class="proj-num">#001</div><div class="proj-title">ECHOREVIEWS</div><div class="proj-tag">LIVE</div></div>
+                  <div class="proj-body">
+                    <div class="proj-desc">Plataforma web de resenas de albumes musicales. Autenticacion, roles admin/usuario, gestion de albumes y artistas. Proteccion XSS, CSRF, CSP y HttpOnly cookies.</div>
+                    <div class="proj-techs"><div class="tech-badge">Java</div><div class="tech-badge">Spring Boot</div><div class="tech-badge">HTML/CSS</div><div class="tech-badge">MySQL</div><div class="tech-badge">OWASP</div></div>
+                    <a class="proj-link" href="https://github.com/Mntt05/Echo-Reviews" target="_blank">&gt; GitHub</a> &nbsp;
+                    <a class="proj-link" href="https://echoreviews.site" target="_blank">&gt; Live</a>
+                  </div>
+                </div>
+                <div class="proj-card">
+                  <div class="proj-header"><div class="proj-num">#002</div><div class="proj-title">ANTI-PHISHING APP</div><div class="proj-tag">ING.SW</div></div>
+                  <div class="proj-body">
+                    <div class="proj-desc">App para detectar y prevenir ataques de phishing. Desarrollada en equipo bajo metodologia agil con Jira y Miro.</div>
+                    <div class="proj-techs"><div class="tech-badge">Python</div><div class="tech-badge">HTML</div><div class="tech-badge">Jira</div><div class="tech-badge">Agile/Scrum</div></div>
+                  </div>
+                </div>
+                <div class="proj-card">
+                  <div class="proj-header"><div class="proj-num">#003</div><div class="proj-title">WEB MUSICA SEGURA</div><div class="proj-tag">DWS</div></div>
+                  <div class="proj-body">
+                    <div class="proj-desc">App web de musica con buenas practicas de seguridad. Autenticacion, autorizacion y validacion para prevenir SQL injection y XSS.</div>
+                    <div class="proj-techs"><div class="tech-badge">Java</div><div class="tech-badge">Spring Boot</div><div class="tech-badge">JavaScript</div><div class="tech-badge">Seg. Web</div></div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- CONTACT -->
+              <section class="pk-section" id="sec-contact">
+                <div class="sec-header"><span class="sec-header-txt">■ ENLACE DE COMUNICACION</span></div>
+                <div class="contact-list">
+                  <a class="contact-item" href="mailto:j.montoto.lozano05@gmail.com">
+                    <div class="contact-icon-wrap">[✉]</div>
+                    <div><div class="contact-label">EMAIL</div><div class="contact-val">j.montoto.lozano05@gmail.com</div></div>
+                    <div class="contact-arr">&gt;</div>
+                  </a>
+                  <a class="contact-item" href="https://github.com/Mntt05" target="_blank">
+                    <div class="contact-icon-wrap">[GIT]</div>
+                    <div><div class="contact-label">GITHUB</div><div class="contact-val">github.com/Mntt05</div></div>
+                    <div class="contact-arr">&gt;</div>
+                  </a>
+                  <a class="contact-item" href="https://linkedin.com/in/jorge-montoto-lozano" target="_blank">
+                    <div class="contact-icon-wrap">[in]</div>
+                    <div><div class="contact-label">LINKEDIN</div><div class="contact-val">jorge-montoto-lozano</div></div>
+                    <div class="contact-arr">&gt;</div>
+                  </a>
+                  <a class="contact-item" href="tel:+34645792112">
+                    <div class="contact-icon-wrap">[☎]</div>
+                    <div><div class="contact-label">TELEFONO</div><div class="contact-val">+34 645 79 21 12</div></div>
+                    <div class="contact-arr">&gt;</div>
+                  </a>
+                </div>
+                <div style="font-size:4px;color:var(--gb-text2);text-align:center;padding:10px 0 16px;">© 2025 JORGE MONTOTO · URJC CIBERSEGURIDAD</div>
+              </section>
+
+            </div><!-- screen-content -->
+          </div><!-- portfolio-screen -->
+        </div><!-- gb-screen -->
+      </div>
+    </div><!-- gb-screen-housing -->
+
+    <!-- Nintendo GAME BOY brand -->
+    <div class="gb-brand">
+      <span class="gb-nintendo">Nintendo</span>
+      <span class="gb-gameboy-text">GAME BOY<sup>™</sup></span>
+    </div>
+
+  </div><!-- gameboy -->
+</div><!-- gameboy-outer -->
+
+<script>
+/* ===================================================================
+   SCALING
+   Natural gameboy: 520×940px.
+   Visible portion we want to show = top 480px (stripe + screen + brand).
+   We scale so those 480px fill 100vh, and 520px fits within 100vw.
+=================================================================== */
+function scaleGameboy() {
+  const gb = document.getElementById('gameboy');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const NATURAL_W = 520;
+  const VISIBLE_H = 480; // how many px of the GB we want to show vertically
+  const scaleH = vh / VISIBLE_H;
+  const scaleW = vw / NATURAL_W;
+  const scale = Math.min(scaleH, scaleW);
+  gb.style.transform = `scale(${scale})`;
+  gb.style.transformOrigin = 'top center';
+}
+scaleGameboy();
+window.addEventListener('resize', scaleGameboy);
+
+/* ===================================================================
+   MUSIC
+=================================================================== */
+const bgMusic = document.getElementById('bg-music');
+let musicOn = false;
+
+function getMusicBtn() { return document.getElementById('music-btn'); }
+
+// Try autoplay on first user interaction
+document.addEventListener('click', function tryAutoplay() {
+  if (!musicOn) {
+    bgMusic.volume = 0.35;
+    bgMusic.play().then(() => {
+      musicOn = true;
+      const btn = getMusicBtn(); if(btn) btn.textContent = '♪ ON';
+    }).catch(() => {});
+  }
+  document.removeEventListener('click', tryAutoplay);
+}, { once: true });
+
+// Also try immediately (some browsers allow it)
+bgMusic.volume = 0.35;
+bgMusic.play().then(() => { musicOn = true; }).catch(() => {});
+
+function toggleMusic() {
+  const btn = getMusicBtn();
+  if (musicOn) {
+    bgMusic.pause();
+    musicOn = false;
+    if(btn) btn.textContent = '♪ OFF';
+  } else {
+    bgMusic.play();
+    musicOn = true;
+    if(btn) btn.textContent = '♪ ON';
+  }
+}
+
+/* ===================================================================
+   BATTLE ENGINE
+=================================================================== */
+const MOVES = [
+  {name:"PENTESTING",  dmg:[30,45], msg:"Oshawott uso PENTESTING!\nPIKACHU quedo impresionado!"},
+  {name:"SPRING BOOT", dmg:[40,55], msg:"Oshawott desplego SPRING BOOT!\nEs muy eficaz!"},
+  {name:"PYTHON HACK", dmg:[25,38], msg:"Oshawott ejecuto PYTHON HACK!\nPIKACHU no pudo esquivar!"},
+  {name:"ANALISIS VULN",dmg:[50,65],msg:"Oshawott detecto todas las vuln!\nGolpe critico!"}
+];
+const ENEMY_MOVES = [
+  "PIKACHU uso ENTREVISTA TECNICA.\nOshawott respondio con calma.",
+  "PIKACHU uso PRUEBA DE LOGICA.\nOshawott lo resolvio en tiempo record.",
+  "PIKACHU uso EXPERIENCIA LABORAL?\nOshawott mostro sus proyectos.",
+  "PIKACHU uso COMPETENCIA SALARIAL.\nOshawott se mantiene firme."
+];
+
+let enemyHp=100, playerHp=100, battleDone=false, canAct=true, introIdx=0;
+const introTexts = [
+  "Un PIKACHU salvaje aparecio!",
+  "Pikachu... Pika pika!",
+  "Oshawott fue enviado al combate!",
+  "Que hara Oshawott?"
+];
+
+const btxt        = document.getElementById('btxt');
+const enemyHpBar  = document.getElementById('enemy-hp');
+const playerHpBar = document.getElementById('player-hp');
+const spriteEnemy = document.getElementById('sprite-enemy');
+const spritePlayer= document.getElementById('sprite-player');
+const moveMenu    = document.getElementById('move-menu');
+const fightRow    = document.getElementById('fight-row');
+const battleOverlay = document.getElementById('battle-overlay');
+
+function typeText(txt, cb) {
+  const lines = txt.split('\n');
+  btxt.innerHTML = '';
+  let i=0, li=0;
+  function next() {
+    if (li >= lines.length) { if(cb) setTimeout(cb, 400); return; }
+    if (i >= lines[li].length) { btxt.innerHTML += '<br>'; li++; i=0; setTimeout(next, 100); return; }
+    btxt.innerHTML = btxt.innerHTML.replace('<span class="b-cursor"></span>', '') + lines[li][i] + '<span class="b-cursor"></span>';
+    i++; setTimeout(next, 36);
+  }
+  next();
+}
+
+function runIntro() {
+  if (introIdx >= introTexts.length) { fightRow.classList.add('visible'); return; }
+  typeText(introTexts[introIdx], () => { introIdx++; setTimeout(runIntro, 600); });
+}
+
+function startBattle() {
+  enemyHp=100; playerHp=100; introIdx=0; battleDone=false; canAct=true;
+  enemyHpBar.style.width='100%'; playerHpBar.style.width='100%';
+  enemyHpBar.style.background='var(--gb-text)'; playerHpBar.style.background='var(--gb-text)';
+  spriteEnemy.className = 'b-sprite-wrap-enemy';
+  spritePlayer.className = 'b-sprite-wrap-player';
+  // Force animation re-trigger: strip class, reflow, re-add
+  const eImg = spriteEnemy.querySelector('img');
+  const pImg = spritePlayer.querySelector('img');
+  eImg.className = 'b-sprite-img';
+  pImg.className = 'b-sprite-img';
+  void eImg.offsetWidth;
+  void pImg.offsetWidth;
+  eImg.className = 'b-sprite-img b-sprite-enemy-img';
+  pImg.className = 'b-sprite-img b-sprite-player-img';
+  fightRow.classList.remove('visible');
+  moveMenu.classList.remove('visible');
+  btxt.innerHTML = 'Cargando...<span class="b-cursor"></span>';
+  battleOverlay.classList.add('active');
+  setTimeout(runIntro, 500);
+}
+
+function dismissDialog() {
+  document.getElementById('intro-dialog').style.display = 'none';
+}
+
+function spriteEffect(el, cls) {
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), 400);
+}
+
+function useMove(idx) {
+  if (!canAct || battleDone) return;
+  canAct = false;
+  moveMenu.classList.remove('visible');
+  const mv = MOVES[idx];
+  const dmg = mv.dmg[0] + Math.floor(Math.random() * (mv.dmg[1] - mv.dmg[0]));
+  enemyHp = Math.max(0, enemyHp - dmg);
+  typeText(mv.msg, () => {
+    spriteEffect(spriteEnemy, 'flash');
+    setTimeout(() => spriteEffect(spriteEnemy, 'shake'), 260);
+    enemyHpBar.style.width = enemyHp + '%';
+    enemyHpBar.style.background = enemyHp < 25 ? '#3A5500' : enemyHp < 55 ? '#556B2F' : 'var(--gb-text)';
+    if (enemyHp <= 0) {
+      setTimeout(() => {
+        spriteEnemy.classList.add('faint');
+        spritePlayer.classList.add('win');
+        typeText("PIKACHU fue derrotado!\nOshawott gano la batalla!\nUn NUEVO TRABAJO se acerca!", () => {
+          battleDone = true; setTimeout(skipBattle, 2200);
+        });
+      }, 600);
+      return;
+    }
+    // Enemy turn
+    setTimeout(() => {
+      const emsg = ENEMY_MOVES[Math.floor(Math.random() * ENEMY_MOVES.length)];
+      typeText(emsg, () => {
+        spriteEffect(spritePlayer, 'flash');
+        setTimeout(() => spriteEffect(spritePlayer, 'shake'), 260);
+        const edm = 8 + Math.floor(Math.random() * 12);
+        playerHp = Math.max(0, playerHp - edm);
+        playerHpBar.style.width = playerHp + '%';
+        playerHpBar.style.background = playerHp < 25 ? '#3A5500' : playerHp < 55 ? '#556B2F' : 'var(--gb-text)';
+        setTimeout(() => typeText("Que hara Oshawott?", () => { fightRow.classList.add('visible'); canAct = true; }), 700);
+      });
+    }, 900);
+  });
+}
+
+function showMoveMenu() { fightRow.classList.remove('visible'); moveMenu.classList.add('visible'); }
+
+function skipBattle() {
+  battleOverlay.style.opacity = '0';
+  battleOverlay.style.transition = 'opacity 0.4s';
+  setTimeout(() => {
+    battleOverlay.classList.remove('active');
+    battleOverlay.style.opacity = '';
+    battleOverlay.style.transition = '';
+    dismissDialog();
+  }, 400);
+}
+
+/* ===================================================================
+   NAV
+=================================================================== */
+function showSec(id, btn) {
+  document.querySelectorAll('.pk-section').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.screen-nav-btn').forEach(b => b.classList.remove('active'));
+  const sec = document.getElementById('sec-' + id);
+  if (sec) sec.classList.add('visible');
+  if (btn) btn.classList.add('active');
+  document.getElementById('screen-content').scrollTop = 0;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') document.getElementById('screen-content').scrollBy({top:50, behavior:'smooth'});
+  if (e.key === 'ArrowUp')   document.getElementById('screen-content').scrollBy({top:-50, behavior:'smooth'});
+});
+</script>
+</body>
+</html>
